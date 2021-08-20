@@ -112,6 +112,7 @@ func (v *keyVaultInst) Public() crypto.PublicKey {
 
 type SignerOpts struct {
 	Algorithm keyvault.JSONWebKeySignatureAlgorithm
+	Context   context.Context
 }
 
 func (o *SignerOpts) HashFunc() crypto.Hash {
@@ -133,6 +134,7 @@ func (v *keyVaultInst) Sign(_ io.Reader, digest []byte, opts crypto.SignerOpts) 
 	}
 
 	var algo keyvault.JSONWebKeySignatureAlgorithm
+	var ctx context.Context
 
 	switch opt := opts.(type) {
 	case *rsa.PSSOptions:
@@ -148,6 +150,7 @@ func (v *keyVaultInst) Sign(_ io.Reader, digest []byte, opts crypto.SignerOpts) 
 		}
 	case *SignerOpts:
 		algo = opt.Algorithm
+		ctx = opt.Context
 	default:
 		switch hash {
 		case crypto.SHA256:
@@ -161,7 +164,7 @@ func (v *keyVaultInst) Sign(_ io.Reader, digest []byte, opts crypto.SignerOpts) 
 		}
 	}
 
-	r, err := v.keyVaultClient.Sign(context.Background(), v.vaultBaseURL, v.keyName, v.keyVersion, keyvault.KeySignParameters{
+	r, err := v.keyVaultClient.Sign(ctx, v.vaultBaseURL, v.keyName, v.keyVersion, keyvault.KeySignParameters{
 		Algorithm: algo,
 		Value:     base64encode(digest),
 	})
@@ -174,17 +177,21 @@ func (v *keyVaultInst) Sign(_ io.Reader, digest []byte, opts crypto.SignerOpts) 
 
 type DecrypterOpts struct {
 	Algorithm keyvault.JSONWebKeyEncryptionAlgorithm
+	Context   context.Context
 }
 
 func (v *keyVaultInst) Decrypt(_ io.Reader, msg []byte, opts crypto.DecrypterOpts) ([]byte, error) {
 
 	algo := keyvault.RSA15
 
+	var ctx context.Context
+
 	if opt, ok := opts.(*DecrypterOpts); ok {
 		algo = opt.Algorithm
+		ctx = opt.Context
 	}
 
-	r, err := v.keyVaultClient.Decrypt(context.Background(), v.vaultBaseURL, v.keyName, v.keyVersion, keyvault.KeyOperationsParameters{
+	r, err := v.keyVaultClient.Decrypt(ctx, v.vaultBaseURL, v.keyName, v.keyVersion, keyvault.KeyOperationsParameters{
 		Algorithm: algo,
 		Value:     base64encode(msg),
 	})
