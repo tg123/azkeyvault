@@ -5,6 +5,7 @@ import (
 	"crypto"
 	"crypto/rsa"
 	"crypto/x509"
+	"encoding/asn1"
 	"encoding/base64"
 	"fmt"
 	"io"
@@ -33,6 +34,18 @@ type Decrypter interface {
 	// Certificate return x509 certificate of Decrypter
 	Certificate() (*x509.Certificate, error)
 }
+
+type digestAlgorithmIdentifier struct {
+	AlgoId asn1.ObjectIdentifier
+	Param  interface{}
+}
+
+type digestInfo struct {
+	Algorithm digestAlgorithmIdentifier
+	Digest    []byte
+}
+
+var sha1Oid = asn1.ObjectIdentifier([]int{1, 3, 14, 3, 2, 26}) // https://datatracker.ietf.org/doc/html/rfc3279#section-2.2.1
 
 type keyVaultInst struct {
 	keyVaultClient keyvaultapi.BaseClientAPI
@@ -153,6 +166,19 @@ func (v *keyVaultInst) Sign(_ io.Reader, digest []byte, opts crypto.SignerOpts) 
 		ctx = opt.Context
 	default:
 		switch hash {
+		case crypto.SHA1:
+			algo = keyvault.RSNULL
+			digest, err = asn1.Marshal(digestInfo{
+				Algorithm: digestAlgorithmIdentifier{
+					AlgoId: sha1Oid,
+					Param:  asn1.NullRawValue,
+				},
+				Digest: digest,
+			})
+			if err != nil {
+				return nil, err
+			}
+
 		case crypto.SHA256:
 			algo = keyvault.RS256
 		case crypto.SHA384:
