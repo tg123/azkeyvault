@@ -164,6 +164,10 @@ func (v *keyVaultInst) Sign(_ io.Reader, digest []byte, opts crypto.SignerOpts) 
 		}
 	}
 
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
 	r, err := v.keyVaultClient.Sign(ctx, v.vaultBaseURL, v.keyName, v.keyVersion, keyvault.KeySignParameters{
 		Algorithm: algo,
 		Value:     base64encode(digest),
@@ -189,6 +193,10 @@ func (v *keyVaultInst) Decrypt(_ io.Reader, msg []byte, opts crypto.DecrypterOpt
 	if opt, ok := opts.(*DecrypterOpts); ok {
 		algo = opt.Algorithm
 		ctx = opt.Context
+	}
+
+	if ctx == nil {
+		ctx = context.Background()
 	}
 
 	r, err := v.keyVaultClient.Decrypt(ctx, v.vaultBaseURL, v.keyName, v.keyVersion, keyvault.KeyOperationsParameters{

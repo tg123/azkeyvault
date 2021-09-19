@@ -239,6 +239,10 @@ func (m *mockApi) popParam() (result []interface{}) {
 }
 
 func (m *mockApi) Sign(ctx context.Context, vaultBaseURL string, keyName string, keyVersion string, parameters keyvault.KeySignParameters) (result keyvault.KeyOperationResult, err error) {
+	if ctx == nil {
+		panic("panic context")
+	}
+
 	m.calledParams = append(m.calledParams, []interface{}{ctx, vaultBaseURL, keyName, keyVersion, parameters})
 
 	var digest []byte
@@ -260,6 +264,10 @@ func (m *mockApi) Sign(ctx context.Context, vaultBaseURL string, keyName string,
 }
 
 func (m *mockApi) Decrypt(ctx context.Context, vaultBaseURL string, keyName string, keyVersion string, parameters keyvault.KeyOperationsParameters) (result keyvault.KeyOperationResult, err error) {
+	if ctx == nil {
+		panic("panic context")
+	}
+
 	m.calledParams = append(m.calledParams, []interface{}{ctx, vaultBaseURL, keyName, keyVersion, parameters})
 
 	if parameters.Algorithm != keyvault.RSA15 {
