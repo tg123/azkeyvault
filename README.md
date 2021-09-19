@@ -6,7 +6,9 @@ The private key is protected by Azure KeyVault and no direct access from app.
 
 ## Examples
 
-[HTTPS server](https://github.com/tg123/azkeyvault/blob/main/example_https_server_test.go#L15)
+[HTTPS Server](example_https_server_test.go)
+
+[SSH Client](example_https_server_test.go)
 
 ## Permissions required
 
