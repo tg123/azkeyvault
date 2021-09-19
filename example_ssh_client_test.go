@@ -8,6 +8,7 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/services/keyvault/v7.1/keyvault"
 	"github.com/Azure/go-autorest/autorest/azure/auth"
+	"github.com/tg123/azkeyvault"
 	"golang.org/x/crypto/ssh"
 )
 
