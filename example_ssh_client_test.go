@@ -13,8 +13,6 @@ import (
 )
 
 func Example_sshClient() {
-	// https server using azure keyvault
-
 	// config using client access key
 	clientID := "<client id>"
 	clientSecret := "<client secret>"
