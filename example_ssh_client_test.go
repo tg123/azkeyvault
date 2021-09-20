@@ -12,7 +12,7 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
-func ExampleSshClient() {
+func Example_sshClient() {
 	// https server using azure keyvault
 
 	// config using client access key

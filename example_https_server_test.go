@@ -12,7 +12,7 @@ import (
 	"github.com/tg123/azkeyvault"
 )
 
-func ExampleHttpsServer() {
+func Example_httpsServer() {
 	// https server using azure keyvault
 
 	// config using client access key
