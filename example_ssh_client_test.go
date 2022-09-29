@@ -6,34 +6,27 @@ import (
 	"log"
 	"strings"
 
-	"github.com/Azure/azure-sdk-for-go/services/keyvault/v7.1/keyvault"
-	"github.com/Azure/go-autorest/autorest/azure/auth"
+	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
+	"github.com/Azure/azure-sdk-for-go/sdk/keyvault/azcertificates"
+	"github.com/Azure/azure-sdk-for-go/sdk/keyvault/azkeys"
 	"github.com/tg123/azkeyvault"
 	"golang.org/x/crypto/ssh"
 )
 
 func Example_sshClient() {
 	// config using client access key
-	clientID := "<client id>"
-	clientSecret := "<client secret>"
-	tenantID := "<tenant id>"
-
 	vaultBaseURL := "https://<xxxx>.vault.azure.net/"
 	keyName := "<key>"
-	// config using client access key
 
-	config := auth.NewClientCredentialsConfig(clientID, clientSecret, tenantID)
-	config.Resource = "https://vault.azure.net"
-
-	a, err := config.Authorizer()
+	credential, err := azidentity.NewDefaultAzureCredential(nil)
 	if err != nil {
 		panic(err)
 	}
 
-	basicClient := keyvault.New()
-	basicClient.Authorizer = a
+	keyClient := azkeys.NewClient(vaultBaseURL, credential, nil)
+	certClient := azcertificates.NewClient(vaultBaseURL, credential, nil)
 
-	kv, err := azkeyvault.NewSigner(basicClient, vaultBaseURL, keyName, "")
+	kv, err := azkeyvault.NewSigner(keyClient, certClient, keyName, "")
 	if err != nil {
 		panic(err)
 	}

@@ -6,13 +6,12 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/asn1"
-	"encoding/base64"
 	"fmt"
 	"io"
 	"sync"
 
-	"github.com/Azure/azure-sdk-for-go/services/keyvault/v7.1/keyvault"
-	"github.com/Azure/azure-sdk-for-go/services/keyvault/v7.1/keyvault/keyvaultapi"
+	"github.com/Azure/azure-sdk-for-go/sdk/keyvault/azcertificates"
+	"github.com/Azure/azure-sdk-for-go/sdk/keyvault/azkeys"
 )
 
 var (
@@ -47,46 +46,68 @@ type digestInfo struct {
 
 var sha1Oid = asn1.ObjectIdentifier([]int{1, 3, 14, 3, 2, 26}) // https://datatracker.ietf.org/doc/html/rfc3279#section-2.2.1
 
+// for testing
+type keyVaultApi interface {
+	Sign(ctx context.Context, name string, version string, parameters azkeys.SignParameters, options *azkeys.SignOptions) (azkeys.SignResponse, error)
+	Decrypt(ctx context.Context, name string, version string, parameters azkeys.KeyOperationsParameters, options *azkeys.DecryptOptions) (azkeys.DecryptResponse, error)
+	GetCertificate(ctx context.Context, certificateName string, certificateVersion string, options *azcertificates.GetCertificateOptions) (azcertificates.GetCertificateResponse, error)
+}
+
+type azurekeyVaultApi struct {
+	keyClient  *azkeys.Client
+	certClient *azcertificates.Client
+}
+
+func (a *azurekeyVaultApi) Sign(ctx context.Context, name string, version string, parameters azkeys.SignParameters, options *azkeys.SignOptions) (azkeys.SignResponse, error) {
+	return a.keyClient.Sign(ctx, name, version, parameters, options)
+}
+
+func (a *azurekeyVaultApi) Decrypt(ctx context.Context, name string, version string, parameters azkeys.KeyOperationsParameters, options *azkeys.DecryptOptions) (azkeys.DecryptResponse, error) {
+	return a.keyClient.Decrypt(ctx, name, version, parameters, options)
+}
+
+func (a *azurekeyVaultApi) GetCertificate(ctx context.Context, certificateName string, certificateVersion string, options *azcertificates.GetCertificateOptions) (azcertificates.GetCertificateResponse, error) {
+	return a.certClient.GetCertificate(ctx, certificateName, certificateVersion, options)
+}
+
 type keyVaultInst struct {
-	keyVaultClient keyvaultapi.BaseClientAPI
-	vaultBaseURL   string
-	keyName        string
-	keyVersion     string
+	client     keyVaultApi
+	keyName    string
+	keyVersion string
 
 	cert *x509.Certificate
 	lock sync.Mutex
 }
 
 func NewSigner(
-	keyVaultClient keyvaultapi.BaseClientAPI,
-	vaultBaseURL string,
+	keyClient *azkeys.Client,
+	certClient *azcertificates.Client,
 	keyName string,
 	keyVersion string,
 ) (Signer, error) {
-	return newInst(keyVaultClient, vaultBaseURL, keyName, keyVersion)
+	return newInst(keyClient, certClient, keyName, keyVersion)
 }
 
 func NewDecrypter(
-	keyVaultClient keyvaultapi.BaseClientAPI,
-	vaultBaseURL string,
+	keyVaultClient *azkeys.Client,
+	certClient *azcertificates.Client,
 	keyName string,
 	keyVersion string,
 ) (Decrypter, error) {
-	return newInst(keyVaultClient, vaultBaseURL, keyName, keyVersion)
+	return newInst(keyVaultClient, certClient, keyName, keyVersion)
 }
 
 func newInst(
-	keyVaultClient keyvaultapi.BaseClientAPI,
-	vaultBaseURL string,
+	keyClient *azkeys.Client,
+	certClient *azcertificates.Client,
 	keyName string,
 	keyVersion string,
 ) (*keyVaultInst, error) {
 
 	c := keyVaultInst{
-		keyVaultClient: keyVaultClient,
-		vaultBaseURL:   vaultBaseURL,
-		keyName:        keyName,
-		keyVersion:     keyVersion,
+		client:     &azurekeyVaultApi{keyClient: keyClient, certClient: certClient},
+		keyName:    keyName,
+		keyVersion: keyVersion,
 	}
 
 	return &c, nil
@@ -100,12 +121,12 @@ func (v *keyVaultInst) Certificate() (*x509.Certificate, error) {
 	v.lock.Lock()
 	defer v.lock.Unlock()
 
-	r, err := v.keyVaultClient.GetCertificate(context.Background(), v.vaultBaseURL, v.keyName, v.keyVersion)
+	r, err := v.client.GetCertificate(context.Background(), v.keyName, v.keyVersion, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	cert, err := x509.ParseCertificate(*r.Cer)
+	cert, err := x509.ParseCertificate(r.CER)
 	if err != nil {
 		return nil, err
 	}
@@ -124,17 +145,17 @@ func (v *keyVaultInst) Public() crypto.PublicKey {
 }
 
 type SignerOpts struct {
-	Algorithm keyvault.JSONWebKeySignatureAlgorithm
+	Algorithm azkeys.JSONWebKeySignatureAlgorithm
 	Context   context.Context
 }
 
 func (o *SignerOpts) HashFunc() crypto.Hash {
 	switch o.Algorithm {
-	case keyvault.ES256, keyvault.ES256K, keyvault.PS256, keyvault.RS256:
+	case azkeys.JSONWebKeySignatureAlgorithmES256, azkeys.JSONWebKeySignatureAlgorithmES256K, azkeys.JSONWebKeySignatureAlgorithmPS256, azkeys.JSONWebKeySignatureAlgorithmRS256:
 		return crypto.SHA256
-	case keyvault.ES384, keyvault.PS384, keyvault.RS384:
+	case azkeys.JSONWebKeySignatureAlgorithmES384, azkeys.JSONWebKeySignatureAlgorithmPS384, azkeys.JSONWebKeySignatureAlgorithmRS384:
 		return crypto.SHA384
-	case keyvault.ES512, keyvault.PS512, keyvault.RS512:
+	case azkeys.JSONWebKeySignatureAlgorithmES512, azkeys.JSONWebKeySignatureAlgorithmPS512, azkeys.JSONWebKeySignatureAlgorithmRS512:
 		return crypto.SHA512
 	}
 	return 0
@@ -146,18 +167,18 @@ func (v *keyVaultInst) Sign(_ io.Reader, digest []byte, opts crypto.SignerOpts) 
 		return nil, fmt.Errorf("bad digest for hash")
 	}
 
-	var algo keyvault.JSONWebKeySignatureAlgorithm
+	var algo azkeys.JSONWebKeySignatureAlgorithm
 	var ctx context.Context
 
 	switch opt := opts.(type) {
 	case *rsa.PSSOptions:
 		switch hash {
 		case crypto.SHA256:
-			algo = keyvault.PS256
+			algo = azkeys.JSONWebKeySignatureAlgorithmPS256
 		case crypto.SHA384:
-			algo = keyvault.PS384
+			algo = azkeys.JSONWebKeySignatureAlgorithmPS384
 		case crypto.SHA512:
-			algo = keyvault.PS512
+			algo = azkeys.JSONWebKeySignatureAlgorithmPS512
 		default:
 			return nil, ErrUnsupportedHash
 		}
@@ -167,7 +188,7 @@ func (v *keyVaultInst) Sign(_ io.Reader, digest []byte, opts crypto.SignerOpts) 
 	default:
 		switch hash {
 		case crypto.SHA1:
-			algo = keyvault.RSNULL
+			algo = azkeys.JSONWebKeySignatureAlgorithmRSNULL
 			digest, err = asn1.Marshal(digestInfo{
 				Algorithm: digestAlgorithmIdentifier{
 					AlgoId: sha1Oid,
@@ -180,11 +201,11 @@ func (v *keyVaultInst) Sign(_ io.Reader, digest []byte, opts crypto.SignerOpts) 
 			}
 
 		case crypto.SHA256:
-			algo = keyvault.RS256
+			algo = azkeys.JSONWebKeySignatureAlgorithmRS256
 		case crypto.SHA384:
-			algo = keyvault.RS384
+			algo = azkeys.JSONWebKeySignatureAlgorithmRS384
 		case crypto.SHA512:
-			algo = keyvault.RS512
+			algo = azkeys.JSONWebKeySignatureAlgorithmRS512
 		default:
 			return nil, ErrUnsupportedHash
 		}
@@ -194,25 +215,25 @@ func (v *keyVaultInst) Sign(_ io.Reader, digest []byte, opts crypto.SignerOpts) 
 		ctx = context.Background()
 	}
 
-	r, err := v.keyVaultClient.Sign(ctx, v.vaultBaseURL, v.keyName, v.keyVersion, keyvault.KeySignParameters{
-		Algorithm: algo,
-		Value:     base64encode(digest),
-	})
+	r, err := v.client.Sign(ctx, v.keyName, v.keyVersion, azkeys.SignParameters{
+		Algorithm: &algo,
+		Value:     digest,
+	}, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	return base64decode(r.Result)
+	return r.Result, nil
 }
 
 type DecrypterOpts struct {
-	Algorithm keyvault.JSONWebKeyEncryptionAlgorithm
+	Algorithm azkeys.JSONWebKeyEncryptionAlgorithm
 	Context   context.Context
 }
 
 func (v *keyVaultInst) Decrypt(_ io.Reader, msg []byte, opts crypto.DecrypterOpts) ([]byte, error) {
 
-	algo := keyvault.RSA15
+	algo := azkeys.JSONWebKeyEncryptionAlgorithmRSA15
 
 	var ctx context.Context
 
@@ -225,26 +246,13 @@ func (v *keyVaultInst) Decrypt(_ io.Reader, msg []byte, opts crypto.DecrypterOpt
 		ctx = context.Background()
 	}
 
-	r, err := v.keyVaultClient.Decrypt(ctx, v.vaultBaseURL, v.keyName, v.keyVersion, keyvault.KeyOperationsParameters{
-		Algorithm: algo,
-		Value:     base64encode(msg),
-	})
+	r, err := v.client.Decrypt(ctx, v.keyName, v.keyVersion, azkeys.KeyOperationsParameters{
+		Algorithm: &algo,
+		Value:     msg,
+	}, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	return base64decode(r.Result)
-}
-
-func base64encode(b []byte) *string {
-	s := base64.RawURLEncoding.EncodeToString(b)
-	return &s
-}
-
-func base64decode(s *string) ([]byte, error) {
-	if s == nil {
-		return nil, fmt.Errorf("api result empty")
-	}
-
-	return base64.RawURLEncoding.DecodeString(*s)
+	return r.Result, nil
 }
