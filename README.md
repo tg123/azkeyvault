@@ -8,7 +8,7 @@ The private key is protected by Azure KeyVault and no direct access from app.
 
 [HTTPS Server](example_https_server_test.go)
 
-[SSH Client](example_https_server_test.go)
+[SSH Client](example_ssh_client_test.go)
 
 ## Permissions required
 
