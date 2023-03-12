@@ -19,8 +19,7 @@ import (
 func TestPublic(t *testing.T) {
 	m := newMockApi()
 
-	var signer Signer
-	signer = &keyVaultInst{
+	var signer Signer = &keyVaultInst{
 		client:     m,
 		keyName:    "keyname",
 		keyVersion: "keyvers",
@@ -69,8 +68,7 @@ func TestPublic(t *testing.T) {
 func TestSign(t *testing.T) {
 	m := newMockApi()
 
-	var signer Signer
-	signer = &keyVaultInst{
+	var signer Signer = &keyVaultInst{
 		client:     m,
 		keyName:    "keyname",
 		keyVersion: "keyvers",
@@ -109,9 +107,11 @@ func TestSign(t *testing.T) {
 	for _, h := range []crypto.Hash{crypto.SHA256, crypto.SHA384, crypto.SHA512} {
 		t.Run("sig pss auto", func(t *testing.T) {
 			hashed := make([]byte, h.Size())
-			signer.Sign(rand.Reader, hashed, &rsa.PSSOptions{
+			if _, err := signer.Sign(rand.Reader, hashed, &rsa.PSSOptions{
 				Hash: h,
-			})
+			}); err != nil {
+				t.Error(err)
+			}
 
 			p := m.popParam()
 			param := p[3].(azkeys.SignParameters)
@@ -133,7 +133,9 @@ func TestSign(t *testing.T) {
 	for _, h := range []crypto.Hash{crypto.SHA256, crypto.SHA384, crypto.SHA512} {
 		t.Run("sig pkcs auto", func(t *testing.T) {
 			hashed := make([]byte, h.Size())
-			signer.Sign(rand.Reader, hashed, h)
+			if _, err := signer.Sign(rand.Reader, hashed, h); err != nil {
+				t.Error(err)
+			}
 
 			p := m.popParam()
 			param := p[3].(azkeys.SignParameters)
@@ -157,8 +159,7 @@ func TestSign(t *testing.T) {
 func TestDecrypt(t *testing.T) {
 	m := newMockApi()
 
-	var decrypter Decrypter
-	decrypter = &keyVaultInst{
+	var decrypter Decrypter = &keyVaultInst{
 		client:     m,
 		keyName:    "keyname",
 		keyVersion: "keyvers",

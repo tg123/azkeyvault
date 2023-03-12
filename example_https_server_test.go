@@ -61,5 +61,6 @@ func Example_httpsServer() {
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "hello\n")
 	})
-	http.Serve(netln, nil)
+
+	panic(http.Serve(netln, nil))
 }
