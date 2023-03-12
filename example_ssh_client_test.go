@@ -23,8 +23,15 @@ func Example_sshClient() {
 		panic(err)
 	}
 
-	keyClient := azkeys.NewClient(vaultBaseURL, credential, nil)
-	certClient := azcertificates.NewClient(vaultBaseURL, credential, nil)
+	keyClient, err := azkeys.NewClient(vaultBaseURL, credential, nil)
+	if err != nil {
+		panic(err)
+	}
+
+	certClient, err := azcertificates.NewClient(vaultBaseURL, credential, nil)
+	if err != nil {
+		panic(err)
+	}
 
 	kv, err := azkeyvault.NewSigner(keyClient, certClient, keyName, "")
 	if err != nil {
