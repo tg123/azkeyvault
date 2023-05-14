@@ -39,22 +39,6 @@ type keyVaultApi interface {
 	GetKey(ctx context.Context, name string, version string, options *azkeys.GetKeyOptions) (azkeys.GetKeyResponse, error)
 }
 
-type azurekeyVaultApi struct {
-	keyClient *azkeys.Client
-}
-
-func (a *azurekeyVaultApi) Sign(ctx context.Context, name string, version string, parameters azkeys.SignParameters, options *azkeys.SignOptions) (azkeys.SignResponse, error) {
-	return a.keyClient.Sign(ctx, name, version, parameters, options)
-}
-
-func (a *azurekeyVaultApi) Decrypt(ctx context.Context, name string, version string, parameters azkeys.KeyOperationsParameters, options *azkeys.DecryptOptions) (azkeys.DecryptResponse, error) {
-	return a.keyClient.Decrypt(ctx, name, version, parameters, options)
-}
-
-func (a *azurekeyVaultApi) GetKey(ctx context.Context, name string, version string, options *azkeys.GetKeyOptions) (azkeys.GetKeyResponse, error) {
-	return a.keyClient.GetKey(ctx, name, version, options)
-}
-
 func toPublicKey(k azkeys.GetKeyResponse) (crypto.PublicKey, error) {
 
 	switch *k.Key.Kty {
