@@ -6,32 +6,25 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
-	"crypto/x509"
 	"fmt"
 	"math/big"
 	"strings"
 	"testing"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/keyvault/azcertificates"
 	"github.com/Azure/azure-sdk-for-go/sdk/keyvault/azkeys"
 )
 
 func TestPublic(t *testing.T) {
 	m := newMockApi()
 
-	var signer Signer = &keyVaultInst{
-		client:     m,
-		keyName:    "keyname",
-		keyVersion: "keyvers",
-	}
-
-	cert, err := x509.ParseCertificate(m.cert)
+	signer, err := newInst(m, "keyname", "keyvers")
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	t.Run("eq", func(t *testing.T) {
-		if !cert.PublicKey.(*rsa.PublicKey).Equal(signer.Public()) {
+		fmt.Println(signer.Public())
+		if !m.privateKey.PublicKey.Equal(signer.Public()) {
 			t.Error("wrong public key returned")
 		}
 	})
@@ -47,31 +40,14 @@ func TestPublic(t *testing.T) {
 			t.Error("wrong param 2")
 		}
 	})
-
-	t.Run("cached", func(t *testing.T) {
-		m.newKey()
-		c, err := signer.Certificate()
-		if err != nil {
-			t.Error(err)
-		}
-
-		if !c.Equal(cert) {
-			t.Error("cert changed")
-		}
-
-		if len(m.calledParams) != 0 {
-			t.Error("api called twice")
-		}
-	})
 }
 
 func TestSign(t *testing.T) {
 	m := newMockApi()
 
-	var signer Signer = &keyVaultInst{
-		client:     m,
-		keyName:    "keyname",
-		keyVersion: "keyvers",
+	signer, err := newInst(m, "keyname", "keyvers")
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	t.Run("sig pkcs15 256", func(t *testing.T) {
@@ -159,10 +135,9 @@ func TestSign(t *testing.T) {
 func TestDecrypt(t *testing.T) {
 	m := newMockApi()
 
-	var decrypter Decrypter = &keyVaultInst{
-		client:     m,
-		keyName:    "keyname",
-		keyVersion: "keyvers",
+	decrypter, err := newInst(m, "keyname", "keyvers")
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	t.Run("dec", func(t *testing.T) {
@@ -195,9 +170,10 @@ func TestDecrypt(t *testing.T) {
 	})
 }
 
+var _ keyVaultApi = &mockApi{}
+
 type mockApi struct {
 	privateKey   *rsa.PrivateKey
-	cert         []byte
 	calledParams [][]interface{}
 }
 
@@ -214,17 +190,6 @@ func (m *mockApi) newKey() {
 	}
 
 	m.privateKey = privateKey
-
-	template := x509.Certificate{
-		SerialNumber: big.NewInt(0),
-	}
-
-	cert, err := x509.CreateCertificate(rand.Reader, &template, &template, &privateKey.PublicKey, privateKey)
-	if err != nil {
-		panic(err)
-	}
-
-	m.cert = cert
 }
 
 func (m *mockApi) popParam() (result []interface{}) {
@@ -279,8 +244,18 @@ func (m *mockApi) Decrypt(ctx context.Context, name string, version string, para
 	return
 }
 
-func (m *mockApi) GetCertificate(ctx context.Context, certificateName string, certificateVersion string, options *azcertificates.GetCertificateOptions) (result azcertificates.GetCertificateResponse, err error) {
-	m.calledParams = append(m.calledParams, []interface{}{ctx, certificateName, certificateVersion, options})
-	result.CER = m.cert
+func (m *mockApi) GetKey(ctx context.Context, name string, version string, options *azkeys.GetKeyOptions) (result azkeys.GetKeyResponse, err error) {
+	if ctx == nil {
+		panic("panic context")
+	}
+
+	m.calledParams = append(m.calledParams, []interface{}{ctx, name, version, options})
+
+	typ := azkeys.JSONWebKeyTypeRSA
+	result.Key = &azkeys.JSONWebKey{
+		Kty: &typ,
+		N:   m.privateKey.PublicKey.N.Bytes(),
+		E:   new(big.Int).SetInt64(int64(m.privateKey.PublicKey.E)).Bytes(),
+	}
 	return
 }

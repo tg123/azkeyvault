@@ -14,6 +14,6 @@ The private key is protected by Azure KeyVault and no direct access from app.
 
  Keep minimal permision to protect the private keys. No extra permission required if API is not in use.
 
- * Public() certificates/get
+ * Public() keys/get
  * Signer.Sign() keys/sign
  * Decrypter.Decrypt() keys/decrypt

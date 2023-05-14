@@ -3,14 +3,14 @@ package azkeyvault
 import (
 	"context"
 	"crypto"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rsa"
-	"crypto/x509"
 	"encoding/asn1"
 	"fmt"
 	"io"
-	"sync"
+	"math/big"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/keyvault/azcertificates"
 	"github.com/Azure/azure-sdk-for-go/sdk/keyvault/azkeys"
 )
 
@@ -19,20 +19,6 @@ var (
 	// algorithm isn't supported.
 	ErrUnsupportedHash = fmt.Errorf("unsupported hash algorithm")
 )
-
-type Signer interface {
-	crypto.Signer
-
-	// Certificate return x509 certificate of Signer
-	Certificate() (*x509.Certificate, error)
-}
-
-type Decrypter interface {
-	crypto.Decrypter
-
-	// Certificate return x509 certificate of Decrypter
-	Certificate() (*x509.Certificate, error)
-}
 
 type digestAlgorithmIdentifier struct {
 	AlgoId asn1.ObjectIdentifier
@@ -50,12 +36,11 @@ var sha1Oid = asn1.ObjectIdentifier([]int{1, 3, 14, 3, 2, 26}) // https://datatr
 type keyVaultApi interface {
 	Sign(ctx context.Context, name string, version string, parameters azkeys.SignParameters, options *azkeys.SignOptions) (azkeys.SignResponse, error)
 	Decrypt(ctx context.Context, name string, version string, parameters azkeys.KeyOperationsParameters, options *azkeys.DecryptOptions) (azkeys.DecryptResponse, error)
-	GetCertificate(ctx context.Context, certificateName string, certificateVersion string, options *azcertificates.GetCertificateOptions) (azcertificates.GetCertificateResponse, error)
+	GetKey(ctx context.Context, name string, version string, options *azkeys.GetKeyOptions) (azkeys.GetKeyResponse, error)
 }
 
 type azurekeyVaultApi struct {
-	keyClient  *azkeys.Client
-	certClient *azcertificates.Client
+	keyClient *azkeys.Client
 }
 
 func (a *azurekeyVaultApi) Sign(ctx context.Context, name string, version string, parameters azkeys.SignParameters, options *azkeys.SignOptions) (azkeys.SignResponse, error) {
@@ -66,82 +51,106 @@ func (a *azurekeyVaultApi) Decrypt(ctx context.Context, name string, version str
 	return a.keyClient.Decrypt(ctx, name, version, parameters, options)
 }
 
-func (a *azurekeyVaultApi) GetCertificate(ctx context.Context, certificateName string, certificateVersion string, options *azcertificates.GetCertificateOptions) (azcertificates.GetCertificateResponse, error) {
-	return a.certClient.GetCertificate(ctx, certificateName, certificateVersion, options)
+func (a *azurekeyVaultApi) GetKey(ctx context.Context, name string, version string, options *azkeys.GetKeyOptions) (azkeys.GetKeyResponse, error) {
+	return a.keyClient.GetKey(ctx, name, version, options)
 }
+
+func toPublicKey(k azkeys.GetKeyResponse) (crypto.PublicKey, error) {
+
+	switch *k.Key.Kty {
+	case azkeys.JSONWebKeyTypeRSA, azkeys.JSONWebKeyTypeRSAHSM:
+		N := new(big.Int).SetBytes(k.Key.N)
+		E := new(big.Int).SetBytes(k.Key.E)
+
+		return &rsa.PublicKey{
+			N: N,
+			E: int(E.Int64()),
+		}, nil
+
+	case azkeys.JSONWebKeyTypeEC, azkeys.JSONWebKeyTypeECHSM:
+		X := new(big.Int).SetBytes(k.Key.X)
+		Y := new(big.Int).SetBytes(k.Key.Y)
+
+		var crv elliptic.Curve
+		switch *k.Key.Crv {
+		case azkeys.JSONWebKeyCurveNameP256, azkeys.JSONWebKeyCurveNameP256K:
+			crv = elliptic.P256()
+		case azkeys.JSONWebKeyCurveNameP384:
+			crv = elliptic.P384()
+		case azkeys.JSONWebKeyCurveNameP521:
+			crv = elliptic.P521()
+		default:
+			return nil, fmt.Errorf("unsupported curve: %v", *k.Key.Crv)
+		}
+
+		return &ecdsa.PublicKey{
+			Curve: crv,
+			X:     X,
+			Y:     Y,
+		}, nil
+	default:
+		return nil, fmt.Errorf("unsupported key type: %s", *k.Key.Kty)
+	}
+}
+
+var _ crypto.Signer = &keyVaultInst{}
+var _ crypto.Decrypter = &keyVaultInst{}
 
 type keyVaultInst struct {
 	client     keyVaultApi
 	keyName    string
 	keyVersion string
 
-	cert *x509.Certificate
-	lock sync.Mutex
+	publickey crypto.PublicKey
 }
 
 func NewSigner(
 	keyClient *azkeys.Client,
-	certClient *azcertificates.Client,
 	keyName string,
 	keyVersion string,
-) (Signer, error) {
-	return newInst(keyClient, certClient, keyName, keyVersion)
+) (crypto.Signer, error) {
+	return newInst(keyClient, keyName, keyVersion)
 }
 
 func NewDecrypter(
-	keyVaultClient *azkeys.Client,
-	certClient *azcertificates.Client,
+	keyClient *azkeys.Client,
 	keyName string,
 	keyVersion string,
-) (Decrypter, error) {
-	return newInst(keyVaultClient, certClient, keyName, keyVersion)
+) (crypto.Decrypter, error) {
+	return newInst(keyClient, keyName, keyVersion)
 }
 
 func newInst(
-	keyClient *azkeys.Client,
-	certClient *azcertificates.Client,
+	keyClient keyVaultApi,
 	keyName string,
 	keyVersion string,
 ) (*keyVaultInst, error) {
 
+	if keyClient == nil {
+		return nil, fmt.Errorf("keyClient is nil")
+	}
+
 	c := keyVaultInst{
-		client:     &azurekeyVaultApi{keyClient: keyClient, certClient: certClient},
+		client:     keyClient,
 		keyName:    keyName,
 		keyVersion: keyVersion,
+	}
+
+	k, err := c.client.GetKey(context.Background(), keyName, keyVersion, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	c.publickey, err = toPublicKey(k)
+	if err != nil {
+		return nil, err
 	}
 
 	return &c, nil
 }
 
-func (v *keyVaultInst) Certificate() (*x509.Certificate, error) {
-	if v.cert != nil {
-		return v.cert, nil
-	}
-
-	v.lock.Lock()
-	defer v.lock.Unlock()
-
-	r, err := v.client.GetCertificate(context.Background(), v.keyName, v.keyVersion, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	cert, err := x509.ParseCertificate(r.CER)
-	if err != nil {
-		return nil, err
-	}
-
-	v.cert = cert
-
-	return cert, nil
-}
-
 func (v *keyVaultInst) Public() crypto.PublicKey {
-	if cert, err := v.Certificate(); err == nil {
-		return cert.PublicKey
-	}
-
-	return nil
+	return v.publickey
 }
 
 type SignerOpts struct {

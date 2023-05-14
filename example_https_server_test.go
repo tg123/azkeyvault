@@ -1,7 +1,9 @@
 package azkeyvault_test
 
 import (
+	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"log"
 	"net"
@@ -10,7 +12,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	"github.com/Azure/azure-sdk-for-go/sdk/keyvault/azcertificates"
 	"github.com/Azure/azure-sdk-for-go/sdk/keyvault/azkeys"
-	"github.com/tg123/azkeyvault"
+	"github.com/tg123/azkeyvault/v2"
 )
 
 func Example_httpsServer() {
@@ -34,7 +36,7 @@ func Example_httpsServer() {
 		panic(err)
 	}
 
-	kv, err := azkeyvault.NewSigner(keyClient, certClient, keyName, "")
+	kv, err := azkeyvault.NewSigner(keyClient, keyName, "")
 	if err != nil {
 		panic(err)
 	}
@@ -44,7 +46,12 @@ func Example_httpsServer() {
 		log.Fatal(err)
 	}
 
-	cert, err := kv.Certificate()
+	r, err := certClient.GetCertificate(context.Background(), keyName, "", nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	cert, err := x509.ParseCertificate(r.CER)
 	if err != nil {
 		log.Fatal(err)
 	}

@@ -7,9 +7,8 @@ import (
 	"strings"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
-	"github.com/Azure/azure-sdk-for-go/sdk/keyvault/azcertificates"
 	"github.com/Azure/azure-sdk-for-go/sdk/keyvault/azkeys"
-	"github.com/tg123/azkeyvault"
+	"github.com/tg123/azkeyvault/v2"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -28,12 +27,7 @@ func Example_sshClient() {
 		panic(err)
 	}
 
-	certClient, err := azcertificates.NewClient(vaultBaseURL, credential, nil)
-	if err != nil {
-		panic(err)
-	}
-
-	kv, err := azkeyvault.NewSigner(keyClient, certClient, keyName, "")
+	kv, err := azkeyvault.NewSigner(keyClient, keyName, "")
 	if err != nil {
 		panic(err)
 	}
