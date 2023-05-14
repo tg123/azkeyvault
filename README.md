@@ -1,7 +1,7 @@
 # Signer and Decrypter for Azure KeyVault
-[![](https://pkg.go.dev/badge/github.com/tg123/azkeyvault?status.svg)](https://pkg.go.dev/github.com/tg123/azkeyvault)
+[![](https://pkg.go.dev/badge/github.com/tg123/azkeyvault?status.svg)](https://pkg.go.dev/github.com/tg123/azkeyvault/v2)
 
-This Go package wraps Azure KeyVault, [sign](https://docs.microsoft.com/en-us/rest/api/keyvault/sign) and [decrypt](https://docs.microsoft.com/en-us/rest/api/keyvault/decrypt/decrypt), into Golang crypto.Signer and crypto.Decrypter. 
+This Go package wraps Azure KeyVault, [sign](https://learn.microsoft.com/en-us/rest/api/keyvault/keys/sign/sign) and [decrypt](https://learn.microsoft.com/en-us/rest/api/keyvault/keys/decrypt/decrypt), into Golang crypto.Signer and crypto.Decrypter. 
 The private key is protected by Azure KeyVault and no direct access from app.
 
 ## Examples
