@@ -30,6 +30,7 @@ jobs:
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v3     
         with:
+            install-mode: goinstall
             args: --timeout=60m -E gofmt
         env:
           GOGC: "10"
